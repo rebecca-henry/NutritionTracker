@@ -67,3 +67,11 @@ async function usdaSearch(query) {
   if (!r.ok) throw new Error('USDA lookup failed');
   return r.json();
 }
+
+async function usdaFoodDetails(fdcId) {
+  const r = await fetch(`${WORKER_URL}/usda?fdcId=${encodeURIComponent(fdcId)}`, {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  });
+  if (!r.ok) throw new Error('USDA details lookup failed');
+  return r.json();
+}

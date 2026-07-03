@@ -14,6 +14,7 @@ function parseUsdaFood(item) {
   const cal = n[1008]; // Energy (kcal)
   if (cal == null) return null; // unusable entry, skip it
   return {
+    fdcId: item.fdcId,
     name: item.description,
     calories_per_serving: Math.round(cal),
     protein_per_serving: Math.round(n[1003] || 0), // Protein
@@ -22,6 +23,36 @@ function parseUsdaFood(item) {
     serving_grams: 100,
     serving_other: '100g',
   };
+}
+
+// Picks the first usable household portion USDA reports for a food (e.g.
+// "1 medium" = 118g for a banana), so logging can use natural units instead
+// of always defaulting to 100g. Falls back to null if nothing usable exists.
+function pickNaturalPortion(portions) {
+  if (!Array.isArray(portions)) return null;
+  for (const p of portions) {
+    if (!p.gramWeight) continue;
+    if (p.portionDescription && p.portionDescription.trim()) {
+      return { grams: p.gramWeight, label: p.portionDescription.trim() };
+    }
+    if (p.modifier && isNaN(parseFloat(p.modifier))) {
+      return { grams: p.gramWeight, label: `${p.amount || 1} ${p.modifier.trim()}` };
+    }
+  }
+  return null;
+}
+
+// Best-effort enhancement: look up the specific food's natural portion size.
+// Never blocks logging — if this fails for any reason, the 100g default
+// from parseUsdaFood is used as-is.
+async function enrichWithNaturalPortion(food) {
+  if (!food.fdcId) return food;
+  try {
+    const details = await usdaFoodDetails(food.fdcId);
+    const portion = pickNaturalPortion(details.foodPortions);
+    if (portion) return { ...food, serving_grams: Math.round(portion.grams), serving_other: portion.label };
+  } catch (e) {}
+  return food;
 }
 
 async function searchUsdaCandidates(query) {
@@ -109,8 +140,12 @@ If not identifiable, respond ONLY with: {"error":"brief reason"}` }
       setStatus('identify-status', '📊 Verifying with USDA…', '');
       const usdaMatch = (await searchUsdaCandidates(result.name))[0];
       setStatus('identify-status', '', '');
-      if (usdaMatch) { await resolveFood({ ...usdaMatch, name: result.name }, 'usda'); }
-      else { await resolveFood(result, 'identify'); }
+      if (usdaMatch) {
+        const enriched = await enrichWithNaturalPortion(usdaMatch);
+        await resolveFood({ ...enriched, name: result.name }, 'usda');
+      } else {
+        await resolveFood(result, 'identify');
+      }
     } catch(err) { setStatus('identify-status', 'Could not identify — try a clearer photo or use Search.', 'error'); }
   };
   reader.readAsDataURL(file);
@@ -162,7 +197,9 @@ async function pickResult(i) {
   const item = document.getElementById('search-results')._items[i];
   setStatus('search-status', '', ''); document.getElementById('search-results').style.display = 'none';
   if (item._src === 'db') { pendingFood = item; showServingStep('db'); return; }
-  await resolveFood(item, item._src); // 'usda' or 'claude'
+  let food = item;
+  if (item._src === 'usda') food = await enrichWithNaturalPortion(item);
+  await resolveFood(food, item._src); // 'usda' or 'claude'
 }
 
 // ── MANUAL ENTRY ──────────────────────────────────────────────────────────────
