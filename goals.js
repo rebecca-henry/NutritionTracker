@@ -4,7 +4,7 @@ let goals = { calories: null, protein: null, carbs: null, fat: null };
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 async function loadGoals() {
   try {
-    const rows = await SB.query('goals', '?id=eq.1&select=calories,protein,carbs,fat');
+    const rows = await SB.query('goals', `?user_id=eq.${currentUserId}&select=calories,protein,carbs,fat`);
     if (rows.length > 0) {
       const g = rows[0];
       goals = { calories: g.calories, protein: g.protein, carbs: g.carbs, fat: g.fat };
@@ -17,7 +17,7 @@ async function loadGoals() {
 
 async function saveGoalsRemote() {
   try {
-    await SB.patch('goals', '?id=eq.1', {
+    await SB.patch('goals', `?user_id=eq.${currentUserId}`, {
       calories: goals.calories, protein: goals.protein,
       carbs: goals.carbs, fat: goals.fat,
       updated_at: new Date().toISOString()
