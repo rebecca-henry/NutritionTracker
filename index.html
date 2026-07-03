@@ -437,11 +437,36 @@ let servingMode='grams';
 let todayLogs=[];
 
 function todayStr(){return new Date().toISOString().split('T')[0]}
-function loadLocal(){
+
+// Goals — persisted in Supabase (single row id=1), localStorage as offline backup
+async function loadGoals(){
+  try{
+    const rows=await SB.query('goals','?id=eq.1&select=calories,protein,carbs,fat');
+    if(rows.length>0){
+      const g=rows[0];
+      goals={calories:g.calories,protein:g.protein,carbs:g.carbs,fat:g.fat};
+      return;
+    }
+  }catch(e){}
+  // Fall back to localStorage if Supabase unreachable
   try{const g=localStorage.getItem('nt-goals');if(g)goals=JSON.parse(g);}catch(e){}
+}
+async function saveGoalsRemote(){
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/goals?id=eq.1`,{
+      method:'PATCH',
+      headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({calories:goals.calories,protein:goals.protein,carbs:goals.carbs,fat:goals.fat,updated_at:new Date().toISOString()})
+    });
+  }catch(e){}
+  // Always mirror to localStorage as offline backup
+  localStorage.setItem('nt-goals',JSON.stringify(goals));
+}
+
+// Weights — localStorage only for now
+function loadWeights(){
   try{const w=localStorage.getItem('nt-weights');if(w)weights=JSON.parse(w);}catch(e){}
 }
-function saveGoalsLocal(){localStorage.setItem('nt-goals',JSON.stringify(goals))}
 function saveWeightsLocal(){localStorage.setItem('nt-weights',JSON.stringify(weights))}
 
 // ── DATE ──────────────────────────────────────────────────────────────────────
@@ -461,12 +486,12 @@ async function loadTodayLogs(){
   document.getElementById('date-display').textContent=formatDate(currentDate);
   try{
     const from=currentDate+'T00:00:00.000Z',to=currentDate+'T23:59:59.999Z';
-    todayLogs=await SB.query('food_logs',`?date=gte.${from}&date=lte.${to}&select=*`);
+    todayLogs=await SB.query('Food_Logs',`?date=gte.${from}&date=lte.${to}&select=*`);
   }catch(e){todayLogs=[];}
   renderToday();
 }
 async function deleteLog(id){
-  try{await SB.remove('food_logs',`?id=eq.${id}`);await loadTodayLogs();showToast('Removed');}
+  try{await SB.remove('Food_Logs',`?id=eq.${id}`);await loadTodayLogs();showToast('Removed');}
   catch(e){showToast('Error removing entry');}
 }
 
@@ -512,7 +537,7 @@ async function renderStreak(){
   // Single query for 60-day window, group by date client-side
   try{
     const cutoff=new Date();cutoff.setDate(cutoff.getDate()-60);
-    const logs=await SB.query('food_logs','?date=gte.'+cutoff.toISOString()+'&select=date');
+    const logs=await SB.query('Food_Logs','?date=gte.'+cutoff.toISOString()+'&select=date');
     const daysWithLogs=new Set(logs.map(l=>l.date.split('T')[0]));
     let streak=0;
     for(let i=0;i<60;i++){
@@ -531,7 +556,7 @@ async function renderHistory(){
   const from14=new Date();from14.setDate(from14.getDate()-13);
   from14.setHours(0,0,0,0);
   let allLogs=[];
-  try{allLogs=await SB.query('food_logs','?date=gte.'+from14.toISOString()+'&select=date,calories');}catch(e){}
+  try{allLogs=await SB.query('Food_Logs','?date=gte.'+from14.toISOString()+'&select=date,calories');}catch(e){}
 
   // Sum calories per date string
   const calByDate={};
@@ -593,9 +618,10 @@ function updateGoalPreview(){
   bd.innerHTML=parts.join(' · ')+(parts.length?' · ':'')+'= <strong>'+Math.round(mk)+' kcal</strong>'+status;bd.className='cal-breakdown '+(isOver?'over':'ok');
 }
 function renderGoalsPage(){sv('g-cal',goals.calories);sv('g-protein',goals.protein);sv('g-carbs',goals.carbs);sv('g-fat',goals.fat);updateGoalPreview()}
-function saveGoals(){
+async function saveGoals(){
   goals={calories:gv('g-cal'),protein:gv('g-protein'),carbs:gv('g-carbs'),fat:gv('g-fat')};
-  saveGoalsLocal();renderToday();showToast('Goals saved');showPage('today',document.getElementById('tab-today'));
+  await saveGoalsRemote();
+  renderToday();showToast('Goals saved');showPage('today',document.getElementById('tab-today'));
 }
 
 // ── MODAL ─────────────────────────────────────────────────────────────────────
@@ -692,7 +718,7 @@ async function doSearch(){
   setStatus('search-status','🔍 Searching your database…','');
   // 1. Your Supabase DB first
   try{
-    const dbResults=await SB.query('foods',`?name=ilike.*${encodeURIComponent(query)}*&limit=6`);
+    const dbResults=await SB.query('Foods',`?name=ilike.*${encodeURIComponent(query)}*&limit=6`);
     if(dbResults.length>0){
       setStatus('search-status','','');
       showResults(dbResults.map(f=>({...f,_src:'db'})));return;
@@ -750,7 +776,7 @@ async function submitManual(){
 async function resolveFood(extracted,source){
   // Check DB by name
   try{
-    const rows=await SB.query('foods',`?name=ilike.${encodeURIComponent(extracted.name)}&limit=1`);
+    const rows=await SB.query('Foods',`?name=ilike.${encodeURIComponent(extracted.name)}&limit=1`);
     if(rows.length>0){pendingFood=rows[0];showServingStep('db');return;}
   }catch(e){}
   // Not in DB — save it
@@ -762,9 +788,10 @@ async function resolveFood(extracted,source){
     fat_per_serving:Math.round(extracted.fat_per_serving||0),
     serving_grams:extracted.serving_grams?Math.round(extracted.serving_grams):null,
     serving_other:extracted.serving_other||null,
-    source
+    source,
+    user_id:null  // replace with auth user ID when login is added
   };
-  try{const ins=await SB.insert('foods',newFood);pendingFood=ins[0]||newFood;}
+  try{const ins=await SB.insert('Foods',newFood);pendingFood=ins[0]||newFood;}
   catch(e){pendingFood=newFood;}
   showServingStep('new');
 }
@@ -836,11 +863,12 @@ async function confirmLog(){
     calories:Math.round((f.calories_per_serving||0)*ratio),
     protein:Math.round((f.protein_per_serving||0)*ratio),
     carbs:Math.round((f.carbs_per_serving||0)*ratio),
-    fat:Math.round((f.fat_per_serving||0)*ratio)
+    fat:Math.round((f.fat_per_serving||0)*ratio),
+    user_id:null  // replace with auth user ID when login is added
   };
   const btn=document.getElementById('confirm-btn');btn.disabled=true;btn.textContent='Saving…';
   try{
-    await SB.insert('food_logs',entry);closeModal();await loadTodayLogs();showToast(f.name+' added');
+    await SB.insert('Food_Logs',entry);closeModal();await loadTodayLogs();showToast(f.name+' added');
   }catch(err){showToast('Error saving — check Supabase RLS');console.error(err);}
   finally{btn.disabled=false;btn.textContent='Add to meal';}
 }
@@ -859,7 +887,12 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 
 if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}
 
-loadLocal();loadTodayLogs();
+async function init(){
+  loadWeights();
+  await loadGoals();
+  await loadTodayLogs();
+}
+init();
 </script>
 </body>
 </html>
