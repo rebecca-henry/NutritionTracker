@@ -115,15 +115,21 @@ async function renderHistory() {
 }
 
 // ── WEIGHT ────────────────────────────────────────────────────────────────────
-function loadWeights() {
-  try { const w = localStorage.getItem('nt-weights'); if (w) weights = JSON.parse(w); } catch(e) {}
+async function loadWeights() {
+  try { weights = await SB.query('Weights', '?select=*&order=date.asc'); }
+  catch(e) { weights = []; }
 }
-function saveWeightsLocal() { localStorage.setItem('nt-weights', JSON.stringify(weights)); }
 
 function renderWeight() {
   const list = document.getElementById('weight-list');
   list.innerHTML = weights.length
-    ? weights.slice().reverse().slice(0,15).map(w => `<div class="weight-log-item"><span style="color:#999;font-size:13px">${formatDate(w.date)}</span><span style="font-weight:600">${w.value} ${w.unit}</span></div>`).join('')
+    ? weights.slice().reverse().slice(0,15).map(w => `<div class="weight-log-item">
+        <div class="weight-log-info">
+          <span style="color:#999;font-size:13px">${formatDate(w.date)}</span>
+          <span style="font-weight:600">${w.value} ${w.unit}</span>
+        </div>
+        <button class="food-del" onclick="deleteWeight(${w.id})">✕</button>
+      </div>`).join('')
     : '<div class="empty-state"><span class="empty-icon">⚖️</span>No weight entries yet</div>';
   const ctx = document.getElementById('weight-chart').getContext('2d');
   if (weightChart) weightChart.destroy();
@@ -131,11 +137,19 @@ function renderWeight() {
   weightChart = new Chart(ctx, { type:'line', data:{ labels:wd.length?wd.map(w=>formatDate(w.date)):[''], datasets:[{ data:wd.length?wd.map(w=>w.value):[0], borderColor:'#10b981', backgroundColor:'rgba(16,185,129,.1)', fill:true, tension:.3, pointRadius:4, pointBackgroundColor:'#10b981' }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45}}, y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10}}} } } });
 }
 
-function logWeight() {
+async function logWeight() {
   const val = parseFloat(document.getElementById('weight-input').value), unit = document.getElementById('weight-unit').value;
   if (isNaN(val) || val < 20) return showToast('Enter a valid weight');
-  weights.push({ date: todayStr(), value: val, unit });
-  weights.sort((a,b) => a.date.localeCompare(b.date));
-  document.getElementById('weight-input').value = '';
-  saveWeightsLocal(); renderWeight(); showToast('Weight logged');
+  const btn = document.querySelector('.log-btn'); if (btn) btn.disabled = true;
+  try {
+    await SB.insert('Weights', { date: todayStr(), value: val, unit, user_id: USER_ID });
+    document.getElementById('weight-input').value = '';
+    await loadWeights(); renderWeight(); showToast('Weight logged');
+  } catch(e) { showToast('Error saving weight'); console.error(e); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function deleteWeight(id) {
+  try { await SB.remove('Weights', `?id=eq.${id}`); await loadWeights(); renderWeight(); showToast('Removed'); }
+  catch(e) { showToast('Error removing entry'); }
 }

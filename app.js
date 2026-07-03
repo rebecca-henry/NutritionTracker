@@ -5,7 +5,7 @@ function showPage(page, btn) {
   document.getElementById('page-'+page).classList.add('active');
   if (btn) btn.classList.add('active');
   if (page === 'history') renderHistory();
-  if (page === 'weight')  renderWeight();
+  if (page === 'weight')  loadWeights().then(renderWeight);
   if (page === 'goals')   renderGoalsPage();
 }
 
@@ -22,7 +22,7 @@ if ('serviceWorker' in navigator) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
-  loadWeights();
+  await loadWeights();
   await loadGoals();
   await loadTodayLogs();
 }
