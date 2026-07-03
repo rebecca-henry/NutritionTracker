@@ -174,7 +174,7 @@
       <!-- SCAN LABEL -->
       <div id="method-label">
         <div class="upload-area">
-          <input type="file" accept="image/*" capture="environment" onchange="handleLabelScan(this)" id="label-input"/>
+          <input type="file" accept="image/*" onchange="handleLabelScan(this)" id="label-input"/>
           <span class="upload-icon">📸</span>
           <p>Take a photo or upload a nutrition label</p>
         </div>
@@ -185,7 +185,7 @@
       <!-- IDENTIFY WHOLE FOOD -->
       <div id="method-identify" style="display:none">
         <div class="upload-area">
-          <input type="file" accept="image/*" capture="environment" onchange="handleIdentifyScan(this)" id="identify-input"/>
+          <input type="file" accept="image/*" onchange="handleIdentifyScan(this)" id="identify-input"/>
           <span class="upload-icon">🥦</span>
           <p>Photo of a raw whole food</p>
           <p class="sub">Fruit, veg, dry grains, nuts, eggs — not cooked dishes</p>
