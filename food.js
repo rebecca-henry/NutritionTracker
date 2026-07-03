@@ -231,7 +231,7 @@ async function resolveFood(extracted, source) {
     fat_per_serving:      Math.round(extracted.fat_per_serving||0),
     serving_grams:        extracted.serving_grams ? Math.round(extracted.serving_grams) : null,
     serving_other:        extracted.serving_other || null,
-    source, user_id: USER_ID
+    source, user_id: currentUserId
   };
   try { const ins = await SB.insert('Foods', newFood); pendingFood = ins[0] || newFood; }
   catch(e) { pendingFood = newFood; }
@@ -308,7 +308,7 @@ async function confirmLog() {
     protein:  Math.round((f.protein_per_serving||0)*ratio),
     carbs:    Math.round((f.carbs_per_serving||0)*ratio),
     fat:      Math.round((f.fat_per_serving||0)*ratio),
-    user_id: USER_ID
+    user_id: currentUserId
   };
   const btn = document.getElementById('confirm-btn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {

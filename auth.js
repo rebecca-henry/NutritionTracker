@@ -40,6 +40,7 @@ function showApp() {
 // sign-in, sign-out, and token refresh.
 supa.auth.onAuthStateChange((_event, session) => {
   accessToken = session?.access_token || null;
+  currentUserId = session?.user?.id || null;
   if (session) {
     showApp();
     if (!appInitialized) { appInitialized = true; init(); }

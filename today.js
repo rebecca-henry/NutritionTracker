@@ -142,7 +142,7 @@ async function logWeight() {
   if (isNaN(val) || val < 20) return showToast('Enter a valid weight');
   const btn = document.querySelector('.log-btn'); if (btn) btn.disabled = true;
   try {
-    await SB.insert('Weights', { date: todayStr(), value: val, unit, user_id: USER_ID });
+    await SB.insert('Weights', { date: todayStr(), value: val, unit, user_id: currentUserId });
     document.getElementById('weight-input').value = '';
     await loadWeights(); renderWeight(); showToast('Weight logged');
   } catch(e) { showToast('Error saving weight'); console.error(e); }

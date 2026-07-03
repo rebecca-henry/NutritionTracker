@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://wbetwrnqdkfldmceyvun.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HonxeV201TiNCi2qrYx6Jw_BbJRi4Gu';
 const WORKER_URL = 'https://nutri-track.rebeccahenryy12.deno.net'; // Deno Deploy proxy
 const AI = WORKER_URL + '/claude';
-const USER_ID = 'rebecca'; // replace with auth.uid() when login is added
+let currentUserId = null; // set by auth.js from session.user.id on login
 
 // Set by auth.js once a session exists. Every Supabase call AND every Worker
 // call now authenticates with this — no more static shared secret.
