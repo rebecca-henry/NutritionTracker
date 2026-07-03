@@ -21,9 +21,10 @@ if ('serviceWorker' in navigator) {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+// Called by auth.js once a logged-in session is confirmed (not on script load,
+// since we don't want to touch Supabase before we know who's logged in).
 async function init() {
   await loadWeights();
   await loadGoals();
   await loadTodayLogs();
 }
-init();
