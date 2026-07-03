@@ -2,13 +2,11 @@
 const SUPABASE_URL = 'https://wbetwrnqdkfldmceyvun.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HonxeV201TiNCi2qrYx6Jw_BbJRi4Gu';
 const WORKER_URL = 'https://nutri-track.rebeccahenryy12.deno.net'; // Deno Deploy proxy
-const APP_SECRET = 'eb1c8243823746c433d7fb8e2165a2b064db92381b799cf1'; // must match APP_SECRET in Deno Deploy env vars
 const AI = WORKER_URL + '/claude';
 const USER_ID = 'rebecca'; // replace with auth.uid() when login is added
 
-// Set by auth.js once a session exists. Falls back to the publishable key
-// (read-only-ish, wide-open RLS) until Stage 3 tightens the policies —
-// after that, requests are only authorized when this carries a real session.
+// Set by auth.js once a session exists. Every Supabase call AND every Worker
+// call now authenticates with this — no more static shared secret.
 let accessToken = null;
 function authHeaders(extra = {}) {
   return { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${accessToken || SUPABASE_KEY}`, ...extra };
@@ -53,7 +51,7 @@ const SB = {
 async function claudeCall(messages, maxTokens) {
   const r = await fetch(AI, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-App-Secret': APP_SECRET },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
     body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens || 600, messages })
   });
   const d = await r.json();
@@ -64,7 +62,7 @@ async function claudeCall(messages, maxTokens) {
 // ── USDA FOODDATA CENTRAL ─────────────────────────────────────────────────────
 async function usdaSearch(query) {
   const r = await fetch(`${WORKER_URL}/usda?query=${encodeURIComponent(query)}`, {
-    headers: { 'X-App-Secret': APP_SECRET }
+    headers: { 'Authorization': `Bearer ${accessToken}` }
   });
   if (!r.ok) throw new Error('USDA lookup failed');
   return r.json();
