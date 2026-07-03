@@ -1,7 +1,8 @@
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://wbetwrnqdkfldmceyvun.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_HonxeV201TiNCi2qrYx6Jw_BbJRi4Gu';
-const AI = 'https://api.anthropic.com/v1/messages';
+const WORKER_URL = 'https://nutri-track.rebeccahenryy12.deno.net'; // Deno Deploy proxy
+const AI = WORKER_URL + '/claude';
 const USER_ID = 'rebecca'; // replace with auth.uid() when login is added
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
@@ -49,4 +50,11 @@ async function claudeCall(messages, maxTokens) {
   const d = await r.json();
   const text = d.content?.filter(b => b.type === 'text').map(b => b.text).join('');
   return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+// ── USDA FOODDATA CENTRAL ─────────────────────────────────────────────────────
+async function usdaSearch(query) {
+  const r = await fetch(`${WORKER_URL}/usda?query=${encodeURIComponent(query)}`);
+  if (!r.ok) throw new Error('USDA lookup failed');
+  return r.json();
 }

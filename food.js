@@ -3,6 +3,37 @@ let currentMeal = 'Breakfast';
 let pendingFood = null;
 let servingMode = 'grams';
 
+// ── USDA MATCHING ─────────────────────────────────────────────────────────────
+// Prefer unbranded reference data (most accurate, lab-analyzed) over branded
+// packaged-food entries (self-reported by manufacturers, more variable).
+const USDA_TYPE_PRIORITY = ['Foundation', 'SR Legacy', 'Survey (FNDDS)', 'Branded'];
+
+function parseUsdaFood(item) {
+  const n = {};
+  (item.foodNutrients || []).forEach(x => { n[x.nutrientId] = x.value; });
+  const cal = n[1008]; // Energy (kcal)
+  if (cal == null) return null; // unusable entry, skip it
+  return {
+    name: item.description,
+    calories_per_serving: Math.round(cal),
+    protein_per_serving: Math.round(n[1003] || 0), // Protein
+    carbs_per_serving: Math.round(n[1005] || 0),   // Carbohydrate, by difference
+    fat_per_serving: Math.round(n[1004] || 0),     // Total lipid (fat)
+    serving_grams: 100,
+    serving_other: '100g',
+  };
+}
+
+async function searchUsdaCandidates(query) {
+  try {
+    const data = await usdaSearch(query);
+    const foods = (data.foods || []).slice().sort(
+      (a, b) => USDA_TYPE_PRIORITY.indexOf(a.dataType) - USDA_TYPE_PRIORITY.indexOf(b.dataType)
+    );
+    return foods.map(parseUsdaFood).filter(Boolean).slice(0, 3);
+  } catch (e) { return []; }
+}
+
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 function openAdd(meal) {
   currentMeal = meal;
@@ -74,8 +105,12 @@ If identifiable, respond ONLY with JSON (no markdown):
 If not identifiable, respond ONLY with: {"error":"brief reason"}` }
       ]}], 800);
       if (result.error) { setStatus('identify-status', `Can't identify: ${result.error}. Try Search instead.`, 'error'); return; }
+
+      setStatus('identify-status', '📊 Verifying with USDA…', '');
+      const usdaMatch = (await searchUsdaCandidates(result.name))[0];
       setStatus('identify-status', '', '');
-      await resolveFood(result, 'identify');
+      if (usdaMatch) { await resolveFood({ ...usdaMatch, name: result.name }, 'usda'); }
+      else { await resolveFood(result, 'identify'); }
     } catch(err) { setStatus('identify-status', 'Could not identify — try a clearer photo or use Search.', 'error'); }
   };
   reader.readAsDataURL(file);
@@ -90,18 +125,31 @@ async function doSearch() {
     const dbResults = await SB.query('Foods', `?name=ilike.*${encodeURIComponent(query)}*&limit=6`);
     if (dbResults.length > 0) { setStatus('search-status','',''); showResults(dbResults.map(f => ({...f, _src:'db'}))); return; }
   } catch(e) {}
-  setStatus('search-status', '🤖 Looking up nutrition…', '');
-  try {
-    const result = await claudeCall([{ role:'user', content:`USDA nutrition for: "${query}". ONLY JSON (no markdown): {"name":"food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"standard serving e.g. 1 cup"}. Use USDA FoodData Central values.` }]);
-    setStatus('search-status', '', '');
-    showResults([{...result, _src:'claude'}]);
-  } catch(err) { setStatus('search-status', 'No results found. Try different words or use Manual entry.', 'error'); }
+
+  setStatus('search-status', '📊 Checking USDA database…', '');
+  const usdaMatches = await searchUsdaCandidates(query);
+
+  let aiResult = null;
+  if (usdaMatches.length === 0) {
+    // Only fall back to an AI estimate when USDA has nothing at all
+    setStatus('search-status', '🤖 No USDA match — getting AI estimate…', '');
+    try {
+      aiResult = await claudeCall([{ role:'user', content:`USDA nutrition for: "${query}". ONLY JSON (no markdown): {"name":"food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"standard serving e.g. 1 cup"}. Use USDA FoodData Central values.` }]);
+    } catch(err) {}
+  }
+
+  setStatus('search-status', '', '');
+  const items = [...usdaMatches.map(f => ({...f, _src:'usda'})), ...(aiResult ? [{...aiResult, _src:'claude'}] : [])];
+  if (!items.length) { setStatus('search-status', 'No results found. Try different words or use Manual entry.', 'error'); return; }
+  showResults(items);
 }
 
 function showResults(items) {
   const el = document.getElementById('search-results');
   el.innerHTML = items.map((item, i) => {
-    const badge = item._src==='db' ? '<span class="source-badge db">Your DB</span>' : '<span class="source-badge ai">USDA via AI</span>';
+    const badge = item._src==='db' ? '<span class="source-badge db">Your DB</span>'
+      : item._src==='usda' ? '<span class="source-badge usda">✓ USDA verified</span>'
+      : '<span class="source-badge ai">⚠ AI estimate — unverified</span>';
     return `<div class="search-result-item" onclick="pickResult(${i})">
       <div class="search-result-name">${item.name}${badge}</div>
       <div class="search-result-meta">${item.serving_other||''}</div>
@@ -114,7 +162,7 @@ async function pickResult(i) {
   const item = document.getElementById('search-results')._items[i];
   setStatus('search-status', '', ''); document.getElementById('search-results').style.display = 'none';
   if (item._src === 'db') { pendingFood = item; showServingStep('db'); return; }
-  await resolveFood(item, 'claude');
+  await resolveFood(item, item._src); // 'usda' or 'claude'
 }
 
 // ── MANUAL ENTRY ──────────────────────────────────────────────────────────────
@@ -158,9 +206,15 @@ function showServingStep(dbStatus) {
   const f = pendingFood;
   document.getElementById('match-name').textContent = f.name;
   const src = document.getElementById('match-source');
-  src.innerHTML = dbStatus==='db'
-    ? '<span class="source-badge db">✓ Found in your database</span>'
-    : '<span class="source-badge ai">✨ Added to your database</span>';
+  if (dbStatus === 'db') {
+    src.innerHTML = '<span class="source-badge db">✓ Found in your database</span>';
+  } else if (f.source === 'usda') {
+    src.innerHTML = '<span class="source-badge usda">✓ Added — USDA verified</span>';
+  } else if (f.source === 'label' || f.source === 'manual') {
+    src.innerHTML = '<span class="source-badge manual">✓ Added to your database</span>';
+  } else {
+    src.innerHTML = '<span class="source-badge ai">⚠ Added — AI estimate, not verified</span>';
+  }
   const sg = f.serving_grams, so = f.serving_other, desc = so ? so : (sg ? sg+'g' : '1 serving');
   document.getElementById('match-macros').innerHTML = `
     <div class="match-macro"><div class="match-macro-val">${f.calories_per_serving||0}</div><div class="match-macro-name">kcal</div></div>
