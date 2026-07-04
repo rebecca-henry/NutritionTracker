@@ -7,6 +7,7 @@ function showPage(page, btn) {
   if (page === 'history') renderHistory();
   if (page === 'weight')  loadWeights().then(renderWeight);
   if (page === 'goals')   renderGoalsPage();
+  if (page === 'dishes')  { showDishListView(); renderDishList(); }
 }
 
 function showToast(msg) {

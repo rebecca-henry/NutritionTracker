@@ -44,6 +44,7 @@
     <button class="tab" id="tab-history" onclick="showPage('history',this)">History</button>
     <button class="tab" id="tab-weight" onclick="showPage('weight',this)">Weight</button>
     <button class="tab" id="tab-goals" onclick="showPage('goals',this)">Goals</button>
+    <button class="tab" id="tab-dishes" onclick="showPage('dishes',this)">Dishes</button>
   </div>
 
   <!-- TODAY -->
@@ -151,6 +152,60 @@
       <button class="save-goals-btn" onclick="saveGoals()">Save goals</button>
     </div>
     <button class="logout-btn" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<!-- DISHES PAGE -->
+<div class="page" id="page-dishes">
+  <div id="dish-builder-view">
+    <div class="section-label">New dish</div>
+    <div class="manual-field full" style="margin-bottom:.75rem">
+      <label>Dish name</label>
+      <input id="dish-name" placeholder="e.g. Chicken pasta bake">
+    </div>
+
+    <div class="upload-area" style="margin-bottom:.75rem">
+      <input type="file" accept="image/*" onchange="handleDishPhoto(this)" id="dish-photo-input">
+      <span class="upload-icon">📷</span>
+      <p>Add a photo (optional)</p>
+    </div>
+    <img class="preview-img" id="dish-photo-preview">
+
+    <div class="section-label">Ingredients (pre-cook weight)</div>
+    <div class="search-row">
+      <input id="dish-ingredient-name" placeholder="Ingredient name">
+      <input id="dish-ingredient-grams" type="number" placeholder="grams" style="max-width:90px">
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#666;margin-bottom:.5rem">
+      <input type="checkbox" id="dish-ingredient-nocal"> No-calorie (water, ice, etc.)
+    </label>
+    <button class="log-btn" style="width:100%;margin-bottom:.5rem" onclick="addDishIngredient()">+ Add ingredient</button>
+    <div class="status-msg" id="dish-ingredient-status"></div>
+    <div id="dish-ingredients-list" style="margin-bottom:.75rem"></div>
+
+    <div class="section-label">Final weight</div>
+    <select id="dish-weight-mode" onchange="onDishWeightModeChange()" style="width:100%;padding:9px;border:1px solid #e5e5e5;border-radius:10px;margin-bottom:.5rem">
+      <option value="same">Same as ingredient weight (default — don't count drained water as an ingredient)</option>
+      <option value="light">Light moisture loss (~10%) — sautéed, simmered</option>
+      <option value="heavy">Heavy moisture loss (~25%) — roasted, grilled, reduced</option>
+      <option value="actual">I measured the actual cooked weight</option>
+    </select>
+    <div class="manual-field full" id="dish-actual-weight-wrap" style="display:none;margin-bottom:.5rem">
+      <label>Measured cooked weight (g)</label>
+      <input id="dish-actual-weight" type="number" oninput="updateDishTotals()">
+    </div>
+
+    <div id="dish-totals" class="card" style="margin-bottom:.75rem"></div>
+
+    <button class="confirm-btn" id="dish-save-btn" onclick="saveDish()">Save dish</button>
+    <button class="back-btn" onclick="cancelDishBuilder()">Back to dish list</button>
+    <div class="status-msg" id="dish-save-status"></div>
+  </div>
+
+  <div id="dish-list-view" style="display:none">
+    <div class="section-label">Your dishes</div>
+    <button class="add-btn" onclick="showDishBuilderView()">+ New dish</button>
+    <div id="dishes-grid" style="margin-top:.75rem"></div>
   </div>
 </div>
 
@@ -274,6 +329,7 @@
 <script src="goals.js"></script>
 <script src="today.js"></script>
 <script src="food.js"></script>
+<script src="dishes.js"></script>
 <script src="app.js"></script>
 
 </body>
