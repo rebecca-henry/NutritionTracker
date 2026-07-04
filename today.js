@@ -5,9 +5,16 @@ let todayLogs = [];
 let historyChart = null;
 let weightChart = null;
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+// Returns a LOCAL calendar-day string (YYYY-MM-DD) for the given Date (defaults to now).
+// Deliberately avoids toISOString(), which converts to UTC and rolls over to the
+// next calendar day in the evening for timezones behind UTC (like Toronto).
+function todayStr(d) {
+  d = d || new Date();
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 function formatDate(str) {
-  const t = todayStr(), y = new Date(); y.setDate(y.getDate()-1); const ys = y.toISOString().split('T')[0];
+  const t = todayStr(), y = new Date(); y.setDate(y.getDate()-1); const ys = todayStr(y);
   if (str === t) return 'Today'; if (str === ys) return 'Yesterday';
   return new Date(str+'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
@@ -16,8 +23,10 @@ function mealEmoji(m) { return { Breakfast:'☕', Lunch:'🥗', Dinner:'🍽️'
 // ── DATE NAV ──────────────────────────────────────────────────────────────────
 function changeDay(d) {
   const dt = new Date(currentDate+'T12:00:00'); dt.setDate(dt.getDate()+d);
-  if (dt > new Date()) return;
-  currentDate = dt.toISOString().split('T')[0]; loadTodayLogs();
+  // Compare calendar-day strings (not exact timestamps) so this can't block
+  // navigating to "today" depending on what time of day it currently is.
+  if (todayStr(dt) > todayStr()) return;
+  currentDate = todayStr(dt); loadTodayLogs();
 }
 
 // ── FOOD LOGS ─────────────────────────────────────────────────────────────────
@@ -123,11 +132,11 @@ async function renderStreak() {
   try {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-60);
     const logs = await SB.query('Food_Logs', '?date=gte.'+cutoff.toISOString()+'&select=date');
-    const days = new Set(logs.map(l => l.date.split('T')[0]));
+    const days = new Set(logs.map(l => todayStr(new Date(l.date))));
     let streak = 0;
     for (let i = 0; i < 60; i++) {
       const d = new Date(); d.setDate(d.getDate()-i);
-      if (days.has(d.toISOString().split('T')[0])) streak++;
+      if (days.has(todayStr(d))) streak++;
       else if (i > 0) break;
     }
     document.getElementById('streak-val').textContent = streak;
@@ -140,10 +149,10 @@ async function renderHistory() {
   let allLogs = [];
   try { allLogs = await SB.query('Food_Logs', '?date=gte.'+from14.toISOString()+'&select=date,calories'); } catch(e) {}
   const calByDate = {};
-  allLogs.forEach(l => { const day = l.date.split('T')[0]; calByDate[day] = (calByDate[day]||0) + (l.calories||0); });
+  allLogs.forEach(l => { const day = todayStr(new Date(l.date)); calByDate[day] = (calByDate[day]||0) + (l.calories||0); });
   const dates = [], cals = [];
   for (let i = 13; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i); const str = d.toISOString().split('T')[0];
+    const d = new Date(); d.setDate(d.getDate()-i); const str = todayStr(d);
     dates.push(formatDate(str)); cals.push(Math.round(calByDate[str]||0));
   }
   const ctx = document.getElementById('history-chart').getContext('2d');
@@ -152,7 +161,7 @@ async function renderHistory() {
   historyChart = new Chart(ctx, { type:'bar', data:{ labels:dates, datasets:[{ data:cals, backgroundColor:cals.map(c=>gc&&c>gc?'#ef4444':'#10b981'), borderRadius:4 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:v=>v.raw+' kcal'}} }, scales:{ x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45}}, y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10}}} } } });
   const list = document.getElementById('history-list'), rows = [];
   for (let i = 0; i < 14; i++) {
-    const d = new Date(); d.setDate(d.getDate()-i); const str = d.toISOString().split('T')[0];
+    const d = new Date(); d.setDate(d.getDate()-i); const str = todayStr(d);
     const c = Math.round(calByDate[str]||0); if (!c) continue;
     rows.push(`<div class="card" style="padding:.75rem 1rem;margin-bottom:.5rem"><div style="display:flex;justify-content:space-between"><span style="font-size:14px;font-weight:500">${formatDate(str)}</span><span style="font-size:14px;font-weight:600;color:${gc&&c>gc?'#ef4444':'#10b981'}">${c} kcal</span></div></div>`);
   }
