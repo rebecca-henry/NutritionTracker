@@ -35,6 +35,50 @@ async function deleteLog(id) {
   catch(e) { showToast('Error removing entry'); }
 }
 
+// Opens the existing Add-food modal pre-filled for an existing log entry.
+// Tries to find the original food record (by name) so amount/serving math
+// stays consistent; falls back to the Manual tab, prefilled with the log's
+// own numbers, if that food no longer exists in "Foods".
+async function editLog(id) {
+  const log = todayLogs.find(l => l.id === id); if (!log) return;
+  editingLogId = id;
+  document.getElementById('modal-title').textContent = 'Edit entry';
+  document.getElementById('edit-meal-select').value = log.meal;
+  document.getElementById('edit-meal-row').style.display = 'block';
+  document.getElementById('add-modal').classList.add('open');
+  resetAllInputs();
+
+  let food = null;
+  try {
+    const rows = await SB.query('Foods', `?name=ilike.${encodeURIComponent(log.food_name)}&limit=1`);
+    if (rows.length) food = rows[0];
+  } catch(e) {}
+
+  if (food) {
+    currentMeal = log.meal;
+    pendingFood = food;
+    showServingStep('db');
+    if (food.serving_grams) {
+      setServingMode('grams');
+      document.getElementById('serving-amount').value = log.grams || food.serving_grams;
+    } else {
+      setServingMode('servings');
+      document.getElementById('serving-amount').value = parseFloat((log.serving_size||'').split('×')[0]) || 1;
+    }
+    updateServingPreview();
+  } else {
+    goToStep('step-method'); selectMethod('manual');
+    document.getElementById('manual-name').value = log.food_name || '';
+    document.getElementById('manual-serving-other').value = log.serving_size || '';
+    document.getElementById('manual-serving-grams').value = log.grams || '';
+    document.getElementById('manual-cal').value = Math.round(log.calories||0);
+    document.getElementById('manual-protein').value = Math.round(log.protein||0);
+    document.getElementById('manual-carbs').value = Math.round(log.carbs||0);
+    document.getElementById('manual-fat').value = Math.round(log.fat||0);
+  }
+  document.getElementById('confirm-btn').textContent = 'Save changes';
+}
+
 // ── RENDER TODAY ──────────────────────────────────────────────────────────────
 function renderToday() {
   let tc=0, tp=0, tca=0, tf=0;
@@ -52,6 +96,7 @@ function renderToday() {
         <div class="food-meta">${l.serving_size||''} · P:${Math.round(l.protein||0)}g C:${Math.round(l.carbs||0)}g F:${Math.round(l.fat||0)}g</div>
       </div>
       <span class="food-cal">${Math.round(l.calories||0)}</span>
+      <button class="food-del" onclick="editLog(${l.id})" style="color:#3b82f6">✎</button>
       <button class="food-del" onclick="deleteLog(${l.id})">✕</button>
     </div>`).join('');
   });

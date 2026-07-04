@@ -2,6 +2,7 @@
 let currentMeal = 'Breakfast';
 let pendingFood = null;
 let servingMode = 'grams';
+let editingLogId = null; // set when editing an existing Food_Logs entry instead of creating a new one
 
 // ── USDA MATCHING ─────────────────────────────────────────────────────────────
 // Prefer unbranded reference data (most accurate, lab-analyzed) over branded
@@ -68,11 +69,19 @@ async function searchUsdaCandidates(query) {
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 function openAdd(meal) {
   currentMeal = meal;
+  editingLogId = null;
+  document.getElementById('edit-meal-row').style.display = 'none';
+  document.getElementById('confirm-btn').textContent = 'Add to meal';
   document.getElementById('modal-title').textContent = 'Add to ' + meal;
   document.getElementById('add-modal').classList.add('open');
   goToStep('step-method'); selectMethod('label'); resetAllInputs();
 }
-function closeModal() { document.getElementById('add-modal').classList.remove('open'); pendingFood = null; }
+function closeModal() {
+  document.getElementById('add-modal').classList.remove('open');
+  pendingFood = null; editingLogId = null;
+  document.getElementById('edit-meal-row').style.display = 'none';
+  document.getElementById('confirm-btn').textContent = 'Add to meal';
+}
 document.getElementById('add-modal').addEventListener('click', e => { if (e.target === document.getElementById('add-modal')) closeModal(); });
 function goToStep(id) { document.querySelectorAll('.step').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 function goBackToMethod() { goToStep('step-method'); pendingFood = null; }
@@ -300,9 +309,10 @@ async function confirmLog() {
     ratio = amt; grams = f.serving_grams ? Math.round(f.serving_grams*amt) : null;
     servingSize = amt+' × '+(f.serving_other||(f.serving_grams?f.serving_grams+'g':'serving'));
   }
+  const meal = editingLogId ? document.getElementById('edit-meal-select').value : currentMeal;
   const entry = {
     date: new Date(currentDate+'T12:00:00').toISOString(),
-    meal: currentMeal, food_id: f.name, food_name: f.name,
+    meal, food_id: f.name, food_name: f.name,
     grams, serving_size: servingSize,
     calories: Math.round((f.calories_per_serving||0)*ratio),
     protein:  Math.round((f.protein_per_serving||0)*ratio),
@@ -310,9 +320,13 @@ async function confirmLog() {
     fat:      Math.round((f.fat_per_serving||0)*ratio),
     user_id: currentUserId
   };
+  const wasEditing = editingLogId;
   const btn = document.getElementById('confirm-btn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await SB.insert('Food_Logs', entry); closeModal(); await loadTodayLogs(); showToast(f.name+' added');
+    if (wasEditing) await SB.patch('Food_Logs', `?id=eq.${wasEditing}`, entry);
+    else await SB.insert('Food_Logs', entry);
+    closeModal(); await loadTodayLogs();
+    showToast(wasEditing ? 'Entry updated' : f.name+' added');
   } catch(err) { showToast('Error saving — check Supabase RLS'); console.error(err); }
-  finally { btn.disabled = false; btn.textContent = 'Add to meal'; }
+  finally { btn.disabled = false; }
 }

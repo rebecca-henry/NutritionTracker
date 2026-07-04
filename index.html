@@ -172,16 +172,73 @@
     <img class="preview-img" id="dish-photo-preview">
 
     <div class="section-label">Ingredients (pre-cook weight)</div>
-    <div class="search-row">
-      <input id="dish-ingredient-name" placeholder="Ingredient name">
-      <input id="dish-ingredient-grams" type="number" placeholder="grams" style="max-width:90px">
+
+    <div class="mode-tabs" style="margin-bottom:.75rem">
+      <button class="mode-tab active" id="dish-tab-search-btn" onclick="selectDishIngredientMethod('search')"><span class="icon">🔍</span>Search</button>
+      <button class="mode-tab" id="dish-tab-label-btn" onclick="selectDishIngredientMethod('label')"><span class="icon">📷</span>Scan label</button>
+      <button class="mode-tab" id="dish-tab-identify-btn" onclick="selectDishIngredientMethod('identify')"><span class="icon">🍎</span>Identify</button>
+      <button class="mode-tab" id="dish-tab-manual-btn" onclick="selectDishIngredientMethod('manual')"><span class="icon">✏️</span>Manual</button>
     </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#666;margin-bottom:.5rem">
-      <input type="checkbox" id="dish-ingredient-nocal"> No-calorie (water, ice, etc.)
-    </label>
-    <button class="log-btn" style="width:100%;margin-bottom:.5rem" onclick="addDishIngredient()">+ Add ingredient</button>
-    <div class="status-msg" id="dish-ingredient-status"></div>
-    <div id="dish-ingredients-list" style="margin-bottom:.75rem"></div>
+
+    <!-- SEARCH -->
+    <div id="dish-method-search">
+      <div class="search-row">
+        <input type="text" id="dish-search-input" placeholder="e.g. chicken breast, oats" onkeydown="if(event.key==='Enter')dishSearchIngredient()">
+        <button onclick="dishSearchIngredient()">Search</button>
+      </div>
+      <div class="status-msg" id="dish-search-status"></div>
+      <div class="search-results" id="dish-search-results"></div>
+    </div>
+
+    <!-- SCAN LABEL -->
+    <div id="dish-method-label" style="display:none">
+      <div class="upload-area">
+        <input type="file" accept="image/*" onchange="dishHandleLabelScan(this)">
+        <span class="upload-icon">📷</span>
+        <p>Take or upload a photo of the label</p>
+      </div>
+      <img id="dish-label-preview" class="preview-img"/>
+      <div class="status-msg" id="dish-label-status"></div>
+    </div>
+
+    <!-- IDENTIFY -->
+    <div id="dish-method-identify" style="display:none">
+      <div class="upload-area">
+        <input type="file" accept="image/*" onchange="dishHandleIdentifyScan(this)">
+        <span class="upload-icon">🍎</span>
+        <p>Photo of a raw fruit, veg, grain, meat, etc.</p>
+      </div>
+      <img id="dish-identify-preview" class="preview-img"/>
+      <div class="status-msg" id="dish-identify-status"></div>
+    </div>
+
+    <!-- MANUAL -->
+    <div id="dish-method-manual" style="display:none">
+      <div class="search-row">
+        <input id="dish-ingredient-name" placeholder="Ingredient name">
+        <input id="dish-ingredient-grams" type="number" placeholder="grams" style="max-width:90px">
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#666;margin-bottom:.5rem">
+        <input type="checkbox" id="dish-ingredient-nocal"> No-calorie (water, ice, etc.)
+      </label>
+      <button class="log-btn" style="width:100%" onclick="addDishIngredient()">+ Add ingredient</button>
+      <div class="status-msg" id="dish-ingredient-status"></div>
+    </div>
+
+    <!-- SHARED CANDIDATE CONFIRM (search/label/identify all funnel here to ask "how many grams?") -->
+    <div class="match-card" id="dish-candidate-block" style="display:none;margin-top:.5rem">
+      <div class="match-name" id="dish-candidate-name"></div>
+      <div class="match-source" id="dish-candidate-source"></div>
+      <div class="match-macros" id="dish-candidate-macros"></div>
+      <div class="serving-input-row" style="margin-bottom:.5rem">
+        <input type="number" id="dish-candidate-grams" placeholder="0">
+        <span class="unit-label">grams used in this dish</span>
+      </div>
+      <button class="confirm-btn" onclick="confirmDishCandidate()">+ Add ingredient</button>
+      <button class="back-btn" onclick="cancelDishCandidate()">Cancel</button>
+    </div>
+
+    <div id="dish-ingredients-list" style="margin:.75rem 0"></div>
 
     <div class="section-label">Final weight</div>
     <select id="dish-weight-mode" onchange="onDishWeightModeChange()" style="width:100%;padding:9px;border:1px solid #e5e5e5;border-radius:10px;margin-bottom:.5rem">
@@ -215,6 +272,13 @@
     <div class="modal-header">
       <span class="modal-title" id="modal-title">Add food</span>
       <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+
+        <div class="manual-field full" id="edit-meal-row" style="display:none;margin-bottom:.75rem">
+      <label>Meal</label>
+      <select id="edit-meal-select" style="padding:9px;border:1px solid #e5e5e5;border-radius:10px">
+        <option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option>
+      </select>
     </div>
 
     <!-- STEP 1: METHOD SELECTION -->

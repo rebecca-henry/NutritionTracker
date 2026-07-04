@@ -48,6 +48,174 @@ async function saveIngredientToFoods(name, per100, source) {
   } catch(e) {}
 }
 
+// ── BUILDER: INGREDIENT INPUT METHODS ─────────────────────────────────────────
+let dishIngredientMethod = 'search';
+let pendingIngredientCandidate = null;
+
+function selectDishIngredientMethod(m) {
+  dishIngredientMethod = m;
+  ['search','label','identify','manual'].forEach(x => {
+    document.getElementById('dish-method-'+x).style.display = x===m ? 'block' : 'none';
+    document.getElementById('dish-tab-'+x+'-btn').classList.toggle('active', x===m);
+  });
+  cancelDishCandidate();
+}
+
+// Normalizes any resolved item (label scan, identify+USDA, search pick — all of
+// which carry a per-serving value plus a serving_grams) into per-100g, then
+// shows the shared confirm block asking how many grams were actually used.
+function setCandidateFromItem(item, source) {
+  const sg = item.serving_grams || 100;
+  const ratio100 = 100 / sg;
+  pendingIngredientCandidate = {
+    name: item.name || item.query || 'Ingredient',
+    per100: {
+      calories: (item.calories_per_serving ?? item.calories ?? 0) * ratio100,
+      protein:  (item.protein_per_serving  ?? item.protein  ?? 0) * ratio100,
+      carbs:    (item.carbs_per_serving    ?? item.carbs    ?? 0) * ratio100,
+      fat:      (item.fat_per_serving      ?? item.fat      ?? 0) * ratio100
+    },
+    source, defaultGrams: item.serving_grams || null
+  };
+  showDishCandidate();
+}
+
+function showDishCandidate() {
+  const c = pendingIngredientCandidate; if (!c) return;
+  document.getElementById('dish-candidate-name').textContent = c.name;
+  const badge = c.source==='db' ? '<span class="source-badge db">✓ Your DB</span>'
+    : c.source==='usda' ? '<span class="source-badge usda">✓ USDA verified</span>'
+    : c.source==='label' ? '<span class="source-badge manual">✓ From label</span>'
+    : '<span class="source-badge ai">⚠ AI estimate — unverified</span>';
+  document.getElementById('dish-candidate-source').innerHTML = badge;
+  document.getElementById('dish-candidate-macros').innerHTML = `
+    <div class="match-macro"><div class="match-macro-val">${Math.round(c.per100.calories)}</div><div class="match-macro-name">kcal/100g</div></div>
+    <div class="match-macro"><div class="match-macro-val">${Math.round(c.per100.protein)}g</div><div class="match-macro-name">protein</div></div>
+    <div class="match-macro"><div class="match-macro-val">${Math.round(c.per100.carbs)}g</div><div class="match-macro-name">carbs</div></div>
+    <div class="match-macro"><div class="match-macro-val">${Math.round(c.per100.fat)}g</div><div class="match-macro-name">fat</div></div>`;
+  document.getElementById('dish-candidate-grams').value = c.defaultGrams || '';
+  document.getElementById('dish-candidate-block').style.display = 'block';
+}
+
+function confirmDishCandidate() {
+  const c = pendingIngredientCandidate; if (!c) return;
+  const grams = parseFloat(document.getElementById('dish-candidate-grams').value);
+  if (isNaN(grams) || grams <= 0) { showToast('Enter the weight in grams'); return; }
+  const ratio = grams / 100;
+  dishIngredients.push({
+    name: c.name, grams, noCal: false,
+    calories: Math.round(c.per100.calories*ratio), protein: Math.round(c.per100.protein*ratio),
+    carbs: Math.round(c.per100.carbs*ratio), fat: Math.round(c.per100.fat*ratio),
+    source: c.source
+  });
+  cancelDishCandidate();
+  document.getElementById('dish-search-input').value = '';
+  document.getElementById('dish-search-results').style.display = 'none';
+  document.getElementById('dish-label-preview').style.display = 'none';
+  document.getElementById('dish-identify-preview').style.display = 'none';
+  renderDishIngredients();
+}
+
+function cancelDishCandidate() {
+  pendingIngredientCandidate = null;
+  document.getElementById('dish-candidate-block').style.display = 'none';
+  document.getElementById('dish-candidate-grams').value = '';
+}
+
+// -- SEARCH --
+async function dishSearchIngredient() {
+  const query = document.getElementById('dish-search-input').value.trim(); if (!query) return;
+  const resultsEl = document.getElementById('dish-search-results'); resultsEl.style.display = 'none'; resultsEl.innerHTML = '';
+  setStatus('dish-search-status', '🔍 Searching your database…', '');
+  let dbResults = [];
+  try { dbResults = await SB.query('Foods', `?name=ilike.*${encodeURIComponent(query)}*&limit=6`); } catch(e) {}
+  if (dbResults.length) { setStatus('dish-search-status', '', ''); showDishSearchResults(dbResults.map(f => ({...f, _src:'db'}))); return; }
+
+  setStatus('dish-search-status', '📊 Checking USDA database…', '');
+  const usdaMatches = await searchUsdaCandidates(query);
+  let aiResult = null;
+  if (!usdaMatches.length) {
+    setStatus('dish-search-status', '🤖 No USDA match — getting AI estimate…', '');
+    try {
+      aiResult = await claudeCall([{ role:'user', content:`Give USDA-style nutrition per 100g for: "${query}". ONLY JSON (no markdown): {"name":"food name","calories":number,"protein":number,"carbs":number,"fat":number}` }], 300);
+    } catch(e) {}
+  }
+  setStatus('dish-search-status', '', '');
+  const items = [
+    ...usdaMatches.map(f => ({...f, _src:'usda'})),
+    ...(aiResult ? [{ ...aiResult, name: aiResult.name||query, calories_per_serving: aiResult.calories, protein_per_serving: aiResult.protein, carbs_per_serving: aiResult.carbs, fat_per_serving: aiResult.fat, serving_grams: 100, _src:'claude' }] : [])
+  ];
+  if (!items.length) { setStatus('dish-search-status', 'No results found. Try Manual entry instead.', 'error'); return; }
+  showDishSearchResults(items);
+}
+
+function showDishSearchResults(items) {
+  const el = document.getElementById('dish-search-results');
+  el.innerHTML = items.map((item, i) => {
+    const badge = item._src==='db' ? '<span class="source-badge db">Your DB</span>'
+      : item._src==='usda' ? '<span class="source-badge usda">✓ USDA verified</span>'
+      : '<span class="source-badge ai">⚠ AI estimate</span>';
+    return `<div class="search-result-item" onclick="pickDishSearchResult(${i})">
+      <div class="search-result-name">${item.name}${badge}</div>
+      <div class="search-result-meta">${item.serving_other||(item.serving_grams?item.serving_grams+'g':'')}</div>
+    </div>`;
+  }).join('');
+  el.style.display = 'block'; el._items = items;
+}
+
+function pickDishSearchResult(i) {
+  const item = document.getElementById('dish-search-results')._items[i];
+  document.getElementById('dish-search-results').style.display = 'none';
+  setCandidateFromItem(item, item._src);
+}
+
+// -- SCAN LABEL --
+async function dishHandleLabelScan(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const img = document.getElementById('dish-label-preview'); img.src = e.target.result; img.style.display = 'block';
+    setStatus('dish-label-status', '🔍 Reading label…', '');
+    try {
+      const result = await claudeCall([{ role:'user', content:[
+        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
+        { type:'text', text:'Read this nutrition label carefully. Respond ONLY with JSON (no markdown): {"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}. All values per ONE serving as labeled.' }
+      ]}], 800);
+      setStatus('dish-label-status', '', '');
+      setCandidateFromItem(result, 'label');
+    } catch(err) { setStatus('dish-label-status', 'Could not read label — try a clearer photo.', 'error'); }
+  };
+  reader.readAsDataURL(file);
+}
+
+// -- IDENTIFY --
+async function dishHandleIdentifyScan(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const img = document.getElementById('dish-identify-preview'); img.src = e.target.result; img.style.display = 'block';
+    setStatus('dish-identify-status', '🔍 Identifying food…', '');
+    try {
+      const result = await claudeCall([{ role:'user', content:[
+        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
+        { type:'text', text:`Identify the raw whole food in this photo. Only identify: fresh fruit, veg, raw dry grains, nuts, seeds, eggs, raw meat/fish. Do NOT identify cooked dishes or packaged foods.
+
+If identifiable, respond ONLY with JSON (no markdown):
+{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}
+
+If not identifiable, respond ONLY with: {"error":"brief reason"}` }
+      ]}], 800);
+      if (result.error) { setStatus('dish-identify-status', `Can't identify: ${result.error}. Try Search instead.`, 'error'); return; }
+      setStatus('dish-identify-status', '📊 Verifying with USDA…', '');
+      const usdaMatch = (await searchUsdaCandidates(result.name))[0];
+      setStatus('dish-identify-status', '', '');
+      if (usdaMatch) setCandidateFromItem({ ...usdaMatch, name: result.name }, 'usda');
+      else setCandidateFromItem(result, 'ai');
+    } catch(err) { setStatus('dish-identify-status', 'Could not identify — try a clearer photo or use Search.', 'error'); }
+  };
+  reader.readAsDataURL(file);
+}
+
 // ── BUILDER: INGREDIENTS ──────────────────────────────────────────────────────
 async function addDishIngredient() {
   const nameEl = document.getElementById('dish-ingredient-name');
@@ -234,6 +402,17 @@ function resetDishBuilder() {
   document.getElementById('dish-actual-weight-wrap').style.display = 'none';
   document.getElementById('dish-save-btn').textContent = 'Save dish';
   setStatus('dish-save-status', '', '');
+  // ingredient-method UI
+  cancelDishCandidate();
+  document.getElementById('dish-search-input').value = '';
+  document.getElementById('dish-search-results').style.display = 'none';
+  document.getElementById('dish-label-preview').style.display = 'none';
+  document.getElementById('dish-identify-preview').style.display = 'none';
+  document.getElementById('dish-ingredient-name').value = '';
+  document.getElementById('dish-ingredient-grams').value = '';
+  document.getElementById('dish-ingredient-nocal').checked = false;
+  setStatus('dish-ingredient-status', '', '');
+  selectDishIngredientMethod('search');
 }
 
 function cancelDishBuilder() { resetDishBuilder(); showDishListView(); }
