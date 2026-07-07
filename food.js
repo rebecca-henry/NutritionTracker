@@ -3,6 +3,7 @@ let currentMeal = 'Breakfast';
 let pendingFood = null;
 let servingMode = 'grams';
 let editingLogId = null; // set when editing an existing Food_Logs entry instead of creating a new one
+let activeScanPick = null; // {containerId, index} while adjusting one item picked from a multi-photo scan picker
 
 // ── USDA MATCHING ─────────────────────────────────────────────────────────────
 // Prefer unbranded reference data (most accurate, lab-analyzed) over branded
@@ -78,7 +79,7 @@ function openAdd(meal) {
 }
 function closeModal() {
   document.getElementById('add-modal').classList.remove('open');
-  pendingFood = null; editingLogId = null;
+  pendingFood = null; editingLogId = null; activeScanPick = null;
   document.getElementById('edit-meal-row').style.display = 'none';
   document.getElementById('confirm-btn').textContent = 'Add to meal';
 }
@@ -94,12 +95,17 @@ function selectMethod(m) {
 }
 
 function resetAllInputs() {
-  document.getElementById('label-preview').style.display = 'none'; setStatus('label-status','',''); document.getElementById('label-input').value = '';
-  document.getElementById('identify-preview').style.display = 'none'; setStatus('identify-status','',''); document.getElementById('identify-input').value = '';
+  document.getElementById('label-preview-grid').innerHTML = ''; document.getElementById('label-preview-grid').style.display = 'none';
+  setStatus('label-status','',''); document.getElementById('label-input').value = '';
+  document.getElementById('label-scan-results').style.display = 'none'; document.getElementById('label-scan-results').innerHTML = '';
+  document.getElementById('identify-preview-grid').innerHTML = ''; document.getElementById('identify-preview-grid').style.display = 'none';
+  setStatus('identify-status','',''); document.getElementById('identify-input').value = '';
+  document.getElementById('identify-scan-results').style.display = 'none'; document.getElementById('identify-scan-results').innerHTML = '';
   document.getElementById('search-input').value = ''; setStatus('search-status','','');
   document.getElementById('search-results').style.display = 'none'; document.getElementById('search-results').innerHTML = '';
   ['manual-name','manual-serving-other','manual-serving-grams','manual-cal','manual-protein','manual-carbs','manual-fat'].forEach(id => document.getElementById(id).value = '');
   setStatus('manual-status','','');
+  activeScanPick = null;
 }
 
 function setStatus(id, msg, type) {
@@ -153,9 +159,10 @@ function showScanPicker(containerId, items, source, resolverFnName) {
   el.innerHTML = items.map((item, i) => {
     const badge = item._source === 'usda' ? '<span class="source-badge usda">✓ USDA verified</span>'
       : item._source === 'ai' || item._source === 'identify' ? '<span class="source-badge ai">⚠ AI estimate — unverified</span>' : '';
-    return `<div class="search-result-item" onclick="pickScanResult('${containerId}', ${i})">
+    return `<div class="search-result-item" id="${containerId}-item-${i}" onclick="pickScanResult('${containerId}', ${i})">
       <div class="search-result-name">${item.name}${badge}</div>
       <div class="search-result-meta">${item.serving_other||''}</div>
+      <div class="added-badge">✓ Added</div>
     </div>`;
   }).join('');
   el.style.display = 'block';
@@ -163,9 +170,18 @@ function showScanPicker(containerId, items, source, resolverFnName) {
 
 async function pickScanResult(containerId, i) {
   const el = document.getElementById(containerId);
+  const itemEl = document.getElementById(containerId+'-item-'+i);
+  if (itemEl && itemEl.classList.contains('added')) return; // already logged, ignore taps
   const item = el._items[i];
-  el.style.display = 'none'; el.innerHTML = '';
+  activeScanPick = { containerId, index: i };
   await window[el._resolver](item, item._source || el._source);
+}
+
+// Called after an item picked from a multi-photo scan is actually saved, so
+// the picker list stays visible (for the other items) but shows this one as done.
+function markScanItemAdded(containerId, index) {
+  const itemEl = document.getElementById(containerId+'-item-'+index);
+  if (itemEl) itemEl.classList.add('added');
 }
 
 // ── SCAN LABEL ────────────────────────────────────────────────────────────────
@@ -174,7 +190,8 @@ async function handleLabelScan(input) {
   if (!files.length) return;
   const overflow = input.files.length > MAX_SCAN_PHOTOS;
   const grid = document.getElementById('label-preview-grid');
-  document.getElementById('label-scan-results').style.display = 'none';
+  document.getElementById('label-scan-results').style.display = 'none'; document.getElementById('label-scan-results').innerHTML = '';
+  activeScanPick = null;
   const photos = await readFilesAsDataURLs(files);
   renderPhotoGrid(grid, photos);
   setStatus('label-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Reading…` : (photos.length > 1 ? '🔍 Reading labels…' : '🔍 Reading label…'), '');
@@ -203,7 +220,8 @@ async function handleIdentifyScan(input) {
   if (!files.length) return;
   const overflow = input.files.length > MAX_SCAN_PHOTOS;
   const grid = document.getElementById('identify-preview-grid');
-  document.getElementById('identify-scan-results').style.display = 'none';
+  document.getElementById('identify-scan-results').style.display = 'none'; document.getElementById('identify-scan-results').innerHTML = '';
+  activeScanPick = null;
   const photos = await readFilesAsDataURLs(files);
   renderPhotoGrid(grid, photos);
   setStatus('identify-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Identifying…` : (photos.length > 1 ? '🔍 Identifying foods…' : '🔍 Identifying food…'), '');
@@ -397,12 +415,24 @@ async function confirmLog() {
     user_id: currentUserId
   };
   const wasEditing = editingLogId;
+  const scanPick = activeScanPick;
   const btn = document.getElementById('confirm-btn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     if (wasEditing) await SB.patch('Food_Logs', `?id=eq.${wasEditing}`, entry);
     else await SB.insert('Food_Logs', entry);
-    closeModal(); await loadTodayLogs();
-    showToast(wasEditing ? 'Entry updated' : f.name+' added');
+    await loadTodayLogs();
+    if (scanPick && !wasEditing) {
+      // Came from a multi-photo picker — mark this item done and go back to
+      // it so the user can pick the next food instead of closing the modal.
+      markScanItemAdded(scanPick.containerId, scanPick.index);
+      activeScanPick = null; pendingFood = null;
+      btn.textContent = 'Add to meal';
+      showToast(f.name+' added');
+      goToStep('step-method');
+    } else {
+      closeModal();
+      showToast(wasEditing ? 'Entry updated' : f.name+' added');
+    }
   } catch(err) { showToast('Error saving — check Supabase RLS'); console.error(err); }
   finally { btn.disabled = false; }
 }

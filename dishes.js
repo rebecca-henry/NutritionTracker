@@ -111,8 +111,12 @@ function confirmDishCandidate() {
   cancelDishCandidate();
   document.getElementById('dish-search-input').value = '';
   document.getElementById('dish-search-results').style.display = 'none';
-  document.getElementById('dish-label-preview').style.display = 'none';
-  document.getElementById('dish-identify-preview').style.display = 'none';
+  if (activeScanPick) {
+    // Came from a multi-photo picker — mark this item done so the user can
+    // still pick the remaining ingredients from the same batch of photos.
+    markScanItemAdded(activeScanPick.containerId, activeScanPick.index);
+    activeScanPick = null;
+  }
   renderDishIngredients();
 }
 
@@ -175,7 +179,8 @@ async function dishHandleLabelScan(input) {
   if (!files.length) return;
   const overflow = input.files.length > MAX_SCAN_PHOTOS;
   const grid = document.getElementById('dish-label-preview-grid');
-  document.getElementById('dish-label-scan-results').style.display = 'none';
+  document.getElementById('dish-label-scan-results').style.display = 'none'; document.getElementById('dish-label-scan-results').innerHTML = '';
+  activeScanPick = null;
   const photos = await readFilesAsDataURLs(files);
   renderPhotoGrid(grid, photos);
   setStatus('dish-label-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Reading…` : (photos.length > 1 ? '🔍 Reading labels…' : '🔍 Reading label…'), '');
@@ -204,7 +209,8 @@ async function dishHandleIdentifyScan(input) {
   if (!files.length) return;
   const overflow = input.files.length > MAX_SCAN_PHOTOS;
   const grid = document.getElementById('dish-identify-preview-grid');
-  document.getElementById('dish-identify-scan-results').style.display = 'none';
+  document.getElementById('dish-identify-scan-results').style.display = 'none'; document.getElementById('dish-identify-scan-results').innerHTML = '';
+  activeScanPick = null;
   const photos = await readFilesAsDataURLs(files);
   renderPhotoGrid(grid, photos);
   setStatus('dish-identify-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Identifying…` : (photos.length > 1 ? '🔍 Identifying foods…' : '🔍 Identifying food…'), '');
@@ -427,8 +433,11 @@ function resetDishBuilder() {
   cancelDishCandidate();
   document.getElementById('dish-search-input').value = '';
   document.getElementById('dish-search-results').style.display = 'none';
-  document.getElementById('dish-label-preview').style.display = 'none';
-  document.getElementById('dish-identify-preview').style.display = 'none';
+  document.getElementById('dish-label-preview-grid').innerHTML = ''; document.getElementById('dish-label-preview-grid').style.display = 'none';
+  document.getElementById('dish-identify-preview-grid').innerHTML = ''; document.getElementById('dish-identify-preview-grid').style.display = 'none';
+  document.getElementById('dish-label-scan-results').style.display = 'none'; document.getElementById('dish-label-scan-results').innerHTML = '';
+  document.getElementById('dish-identify-scan-results').style.display = 'none'; document.getElementById('dish-identify-scan-results').innerHTML = '';
+  activeScanPick = null;
   document.getElementById('dish-ingredient-name').value = '';
   document.getElementById('dish-ingredient-grams').value = '';
   document.getElementById('dish-ingredient-nocal').checked = false;

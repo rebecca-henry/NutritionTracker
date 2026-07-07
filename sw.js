@@ -1,4 +1,4 @@
-const CACHE = 'nutritrack-v4';
+const CACHE = 'nutritrack-v5';
 const SHELL = ['/', '/index.html', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js'];
 
 self.addEventListener('install', e => {
