@@ -171,49 +171,70 @@ function pickDishSearchResult(i) {
 
 // -- SCAN LABEL --
 async function dishHandleLabelScan(input) {
-  const file = input.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const img = document.getElementById('dish-label-preview'); img.src = e.target.result; img.style.display = 'block';
-    setStatus('dish-label-status', '🔍 Reading label…', '');
-    try {
-      const result = await claudeCall([{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
-        { type:'text', text:'Read this nutrition label carefully. Respond ONLY with JSON (no markdown): {"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}. All values per ONE serving as labeled.' }
-      ]}], 800);
-      setStatus('dish-label-status', '', '');
-      setCandidateFromItem(result, 'label');
-    } catch(err) { setStatus('dish-label-status', 'Could not read label — try a clearer photo.', 'error'); }
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(input.files || []).slice(0, MAX_SCAN_PHOTOS);
+  if (!files.length) return;
+  const overflow = input.files.length > MAX_SCAN_PHOTOS;
+  const grid = document.getElementById('dish-label-preview-grid');
+  document.getElementById('dish-label-scan-results').style.display = 'none';
+  const photos = await readFilesAsDataURLs(files);
+  renderPhotoGrid(grid, photos);
+  setStatus('dish-label-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Reading…` : (photos.length > 1 ? '🔍 Reading labels…' : '🔍 Reading label…'), '');
+  try {
+    const multi = photos.length > 1;
+    const result = await claudeCall([{ role:'user', content:[
+      ...imageBlocks(photos),
+      { type:'text', text: `You are shown ${photos.length} photo(s) of nutrition label(s).${multi ? ' Work out whether these photos are different angles/sides of the SAME single product, or labels for DIFFERENT products.' : ''}
+Read the label(s) carefully. Respond ONLY with JSON (no markdown):
+{"items":[{"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}]}
+${multi ? 'If all photos are the SAME product, "items" must contain exactly ONE merged object combining info from all the photos. If they are DIFFERENT products, "items" should contain one object per distinct product.' : '"items" should contain exactly one object.'}
+All values per ONE serving as labeled.` }
+    ]}], 900);
+    markPhotosDone(grid);
+    setStatus('dish-label-status', '', '');
+    const items = result.items || [];
+    if (!items.length) { setStatus('dish-label-status', 'Could not read label(s) — try clearer photos.', 'error'); return; }
+    if (items.length === 1) { setCandidateFromItem(items[0], 'label'); return; }
+    showScanPicker('dish-label-scan-results', items.map(it => ({...it, _source:'label'})), 'label', 'setCandidateFromItem');
+  } catch(err) { markPhotosDone(grid); setStatus('dish-label-status', 'Could not read label(s) — try clearer photos.', 'error'); }
 }
 
 // -- IDENTIFY --
 async function dishHandleIdentifyScan(input) {
-  const file = input.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const img = document.getElementById('dish-identify-preview'); img.src = e.target.result; img.style.display = 'block';
-    setStatus('dish-identify-status', '🔍 Identifying food…', '');
-    try {
-      const result = await claudeCall([{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
-        { type:'text', text:`Identify the raw whole food in this photo. Only identify: fresh fruit, veg, raw dry grains, nuts, seeds, eggs, raw meat/fish. Do NOT identify cooked dishes or packaged foods.
+  const files = Array.from(input.files || []).slice(0, MAX_SCAN_PHOTOS);
+  if (!files.length) return;
+  const overflow = input.files.length > MAX_SCAN_PHOTOS;
+  const grid = document.getElementById('dish-identify-preview-grid');
+  document.getElementById('dish-identify-scan-results').style.display = 'none';
+  const photos = await readFilesAsDataURLs(files);
+  renderPhotoGrid(grid, photos);
+  setStatus('dish-identify-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Identifying…` : (photos.length > 1 ? '🔍 Identifying foods…' : '🔍 Identifying food…'), '');
+  try {
+    const multi = photos.length > 1;
+    const result = await claudeCall([{ role:'user', content:[
+      ...imageBlocks(photos),
+      { type:'text', text:`You are shown ${photos.length} photo(s). Identify raw whole foods only: fresh fruit, veg, raw dry grains, nuts, seeds, eggs, raw meat/fish. Do NOT identify cooked dishes or packaged foods.
+${multi ? 'Work out whether these photos show different angles of the SAME single food item, or MULTIPLE distinct food items.' : ''}
+Respond ONLY with JSON (no markdown):
+{"items":[{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}]}
+${multi ? 'If all photos are the SAME item, "items" must contain exactly ONE object. If they are DIFFERENT items, include one object per distinct item.' : '"items" should contain exactly one object.'}
+For any food that isn't identifiable, use {"error":"brief reason"} in its place in the array instead.` }
+    ]}], 900);
+    markPhotosDone(grid);
+    const items = result.items || [];
+    const valid = items.filter(it => !it.error);
+    if (!valid.length) { setStatus('dish-identify-status', `Can't identify: ${items[0]?.error||'try clearer photos'}. Try Search instead.`, 'error'); return; }
 
-If identifiable, respond ONLY with JSON (no markdown):
-{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}
-
-If not identifiable, respond ONLY with: {"error":"brief reason"}` }
-      ]}], 800);
-      if (result.error) { setStatus('dish-identify-status', `Can't identify: ${result.error}. Try Search instead.`, 'error'); return; }
-      setStatus('dish-identify-status', '📊 Verifying with USDA…', '');
-      const usdaMatch = (await searchUsdaCandidates(result.name))[0];
-      setStatus('dish-identify-status', '', '');
-      if (usdaMatch) setCandidateFromItem({ ...usdaMatch, name: result.name }, 'usda');
-      else setCandidateFromItem(result, 'ai');
-    } catch(err) { setStatus('dish-identify-status', 'Could not identify — try a clearer photo or use Search.', 'error'); }
-  };
-  reader.readAsDataURL(file);
+    setStatus('dish-identify-status', '📊 Verifying with USDA…', '');
+    const enrichedItems = [];
+    for (const it of valid) {
+      const usdaMatch = (await searchUsdaCandidates(it.name))[0];
+      if (usdaMatch) enrichedItems.push({ ...usdaMatch, name: it.name, _source:'usda' });
+      else enrichedItems.push({ ...it, _source:'ai' });
+    }
+    setStatus('dish-identify-status', '', '');
+    if (enrichedItems.length === 1) { setCandidateFromItem(enrichedItems[0], enrichedItems[0]._source); return; }
+    showScanPicker('dish-identify-scan-results', enrichedItems, 'identify', 'setCandidateFromItem');
+  } catch(err) { markPhotosDone(grid); setStatus('dish-identify-status', 'Could not identify — try clearer photos or use Search.', 'error'); }
 }
 
 // ── BUILDER: INGREDIENTS ──────────────────────────────────────────────────────

@@ -193,23 +193,27 @@
     <!-- SCAN LABEL -->
     <div id="dish-method-label" style="display:none">
       <div class="upload-area">
-        <input type="file" accept="image/*" onchange="dishHandleLabelScan(this)">
+        <input type="file" accept="image/*" multiple onchange="dishHandleLabelScan(this)">
         <span class="upload-icon">📷</span>
         <p>Take or upload a photo of the label</p>
+        <p class="sub">Up to 5 photos at once</p>
       </div>
-      <img id="dish-label-preview" class="preview-img"/>
+      <div id="dish-label-preview-grid" class="photo-preview-grid"></div>
       <div class="status-msg" id="dish-label-status"></div>
+      <div class="search-results" id="dish-label-scan-results"></div>
     </div>
 
     <!-- IDENTIFY -->
     <div id="dish-method-identify" style="display:none">
       <div class="upload-area">
-        <input type="file" accept="image/*" onchange="dishHandleIdentifyScan(this)">
+        <input type="file" accept="image/*" multiple onchange="dishHandleIdentifyScan(this)">
         <span class="upload-icon">🍎</span>
         <p>Photo of a raw fruit, veg, grain, meat, etc.</p>
+        <p class="sub">Up to 5 photos at once</p>
       </div>
-      <img id="dish-identify-preview" class="preview-img"/>
+      <div id="dish-identify-preview-grid" class="photo-preview-grid"></div>
       <div class="status-msg" id="dish-identify-status"></div>
+      <div class="search-results" id="dish-identify-scan-results"></div>
     </div>
 
     <!-- MANUAL -->
@@ -293,24 +297,27 @@
       <!-- SCAN LABEL -->
       <div id="method-label">
         <div class="upload-area">
-          <input type="file" accept="image/*" onchange="handleLabelScan(this)" id="label-input"/>
+          <input type="file" accept="image/*" multiple onchange="handleLabelScan(this)" id="label-input"/>
           <span class="upload-icon">📸</span>
           <p>Take a photo or upload a nutrition label</p>
+          <p class="sub">Up to 5 photos at once</p>
         </div>
-        <img id="label-preview" class="preview-img"/>
+        <div id="label-preview-grid" class="photo-preview-grid"></div>
         <div class="status-msg" id="label-status"></div>
+        <div class="search-results" id="label-scan-results"></div>
       </div>
 
       <!-- IDENTIFY WHOLE FOOD -->
       <div id="method-identify" style="display:none">
         <div class="upload-area">
-          <input type="file" accept="image/*" onchange="handleIdentifyScan(this)" id="identify-input"/>
+          <input type="file" accept="image/*" multiple onchange="handleIdentifyScan(this)" id="identify-input"/>
           <span class="upload-icon">🥦</span>
           <p>Photo of a raw whole food</p>
-          <p class="sub">Fruit, veg, dry grains, nuts, eggs — not cooked dishes</p>
+          <p class="sub">Fruit, veg, dry grains, nuts, eggs — not cooked dishes. Up to 5 photos at once</p>
         </div>
-        <img id="identify-preview" class="preview-img"/>
+        <div id="identify-preview-grid" class="photo-preview-grid"></div>
         <div class="status-msg" id="identify-status"></div>
+        <div class="search-results" id="identify-scan-results"></div>
       </div>
 
       <!-- SEARCH -->

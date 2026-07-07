@@ -108,56 +108,126 @@ function setStatus(id, msg, type) {
   el.className = 'status-msg' + (msg?' visible':'') + (type?' '+type:'');
 }
 
+// ── MULTI-PHOTO HELPERS ─────────────────────────────────────────────────────
+// Shared by food.js and dishes.js scan flows. Loaded before dishes.js.
+const MAX_SCAN_PHOTOS = 5;
+
+function readFilesAsDataURLs(files) {
+  return Promise.all(Array.from(files).map(file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve({ file, dataUrl: e.target.result });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  })));
+}
+
+function renderPhotoGrid(gridEl, photos) {
+  gridEl.innerHTML = photos.map((p, i) => `
+    <div class="photo-thumb scanning" id="${gridEl.id}-thumb-${i}">
+      <img src="${p.dataUrl}"/>
+      <div class="thumb-spinner"></div>
+    </div>`).join('');
+  gridEl.style.display = 'flex';
+}
+
+function markPhotosDone(gridEl) {
+  gridEl.querySelectorAll('.photo-thumb').forEach(t => t.classList.remove('scanning'));
+}
+
+function imageBlocks(photos) {
+  return photos.map(p => ({ type:'image', source:{ type:'base64', media_type:p.file.type||'image/jpeg', data:p.dataUrl.split(',')[1] } }));
+}
+
+// Shows a tappable list of results when a multi-photo scan turns up more than
+// one distinct item. resolverFnName is the name of a global function
+// (resolveFood or setCandidateFromItem) that will be called with (item, source).
+function showScanPicker(containerId, items, source, resolverFnName) {
+  const el = document.getElementById(containerId);
+  el._items = items; el._source = source; el._resolver = resolverFnName;
+  el.innerHTML = items.map((item, i) => {
+    const badge = item._source === 'usda' ? '<span class="source-badge usda">✓ USDA verified</span>'
+      : item._source === 'ai' || item._source === 'identify' ? '<span class="source-badge ai">⚠ AI estimate — unverified</span>' : '';
+    return `<div class="search-result-item" onclick="pickScanResult('${containerId}', ${i})">
+      <div class="search-result-name">${item.name}${badge}</div>
+      <div class="search-result-meta">${item.serving_other||''}</div>
+    </div>`;
+  }).join('');
+  el.style.display = 'block';
+}
+
+async function pickScanResult(containerId, i) {
+  const el = document.getElementById(containerId);
+  const item = el._items[i];
+  el.style.display = 'none'; el.innerHTML = '';
+  await window[el._resolver](item, item._source || el._source);
+}
+
 // ── SCAN LABEL ────────────────────────────────────────────────────────────────
 async function handleLabelScan(input) {
-  const file = input.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const img = document.getElementById('label-preview'); img.src = e.target.result; img.style.display = 'block';
-    setStatus('label-status', '🔍 Reading label…', '');
-    try {
-      const result = await claudeCall([{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
-        { type:'text', text:'Read this nutrition label carefully. Respond ONLY with JSON (no markdown): {"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}. All values per ONE serving as labeled.' }
-      ]}], 800);
-      setStatus('label-status', '', '');
-      await resolveFood(result, 'label');
-    } catch(err) { setStatus('label-status', 'Could not read label — try a clearer photo.', 'error'); }
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(input.files || []).slice(0, MAX_SCAN_PHOTOS);
+  if (!files.length) return;
+  const overflow = input.files.length > MAX_SCAN_PHOTOS;
+  const grid = document.getElementById('label-preview-grid');
+  document.getElementById('label-scan-results').style.display = 'none';
+  const photos = await readFilesAsDataURLs(files);
+  renderPhotoGrid(grid, photos);
+  setStatus('label-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Reading…` : (photos.length > 1 ? '🔍 Reading labels…' : '🔍 Reading label…'), '');
+  try {
+    const multi = photos.length > 1;
+    const result = await claudeCall([{ role:'user', content:[
+      ...imageBlocks(photos),
+      { type:'text', text: `You are shown ${photos.length} photo(s) of nutrition label(s).${multi ? ' Work out whether these photos are different angles/sides of the SAME single product, or labels for DIFFERENT products.' : ''}
+Read the label(s) carefully. Respond ONLY with JSON (no markdown):
+{"items":[{"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}]}
+${multi ? 'If all photos are the SAME product, "items" must contain exactly ONE merged object combining info from all the photos. If they are DIFFERENT products, "items" should contain one object per distinct product.' : '"items" should contain exactly one object.'}
+All values per ONE serving as labeled.` }
+    ]}], 900);
+    markPhotosDone(grid);
+    setStatus('label-status', '', '');
+    const items = result.items || [];
+    if (!items.length) { setStatus('label-status', 'Could not read label(s) — try clearer photos.', 'error'); return; }
+    if (items.length === 1) { await resolveFood(items[0], 'label'); return; }
+    showScanPicker('label-scan-results', items.map(it => ({...it, _source:'label'})), 'label', 'resolveFood');
+  } catch(err) { markPhotosDone(grid); setStatus('label-status', 'Could not read label(s) — try clearer photos.', 'error'); }
 }
 
 // ── IDENTIFY FOOD ─────────────────────────────────────────────────────────────
 async function handleIdentifyScan(input) {
-  const file = input.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const img = document.getElementById('identify-preview'); img.src = e.target.result; img.style.display = 'block';
-    setStatus('identify-status', '🔍 Identifying food…', '');
-    try {
-      const result = await claudeCall([{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type:file.type||'image/jpeg', data:e.target.result.split(',')[1] } },
-        { type:'text', text:`Identify the raw whole food in this photo. Only identify: fresh fruit, veg, raw dry grains, nuts, seeds, eggs, raw meat/fish. Do NOT identify cooked dishes or packaged foods.
+  const files = Array.from(input.files || []).slice(0, MAX_SCAN_PHOTOS);
+  if (!files.length) return;
+  const overflow = input.files.length > MAX_SCAN_PHOTOS;
+  const grid = document.getElementById('identify-preview-grid');
+  document.getElementById('identify-scan-results').style.display = 'none';
+  const photos = await readFilesAsDataURLs(files);
+  renderPhotoGrid(grid, photos);
+  setStatus('identify-status', overflow ? `Only the first ${MAX_SCAN_PHOTOS} photos are used. Identifying…` : (photos.length > 1 ? '🔍 Identifying foods…' : '🔍 Identifying food…'), '');
+  try {
+    const multi = photos.length > 1;
+    const result = await claudeCall([{ role:'user', content:[
+      ...imageBlocks(photos),
+      { type:'text', text:`You are shown ${photos.length} photo(s). Identify raw whole foods only: fresh fruit, veg, raw dry grains, nuts, seeds, eggs, raw meat/fish. Do NOT identify cooked dishes or packaged foods.
+${multi ? 'Work out whether these photos show different angles of the SAME single food item, or MULTIPLE distinct food items.' : ''}
+Respond ONLY with JSON (no markdown):
+{"items":[{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}]}
+${multi ? 'If all photos are the SAME item, "items" must contain exactly ONE object. If they are DIFFERENT items, include one object per distinct item.' : '"items" should contain exactly one object.'}
+For any food that isn't identifiable, use {"error":"brief reason"} in its place in the array instead.` }
+    ]}], 900);
+    markPhotosDone(grid);
+    const items = result.items || [];
+    const valid = items.filter(it => !it.error);
+    if (!valid.length) { setStatus('identify-status', `Can't identify: ${items[0]?.error||'try clearer photos'}. Try Search instead.`, 'error'); return; }
 
-If identifiable, respond ONLY with JSON (no markdown):
-{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}
-
-If not identifiable, respond ONLY with: {"error":"brief reason"}` }
-      ]}], 800);
-      if (result.error) { setStatus('identify-status', `Can't identify: ${result.error}. Try Search instead.`, 'error'); return; }
-
-      setStatus('identify-status', '📊 Verifying with USDA…', '');
-      const usdaMatch = (await searchUsdaCandidates(result.name))[0];
-      setStatus('identify-status', '', '');
-      if (usdaMatch) {
-        const enriched = await enrichWithNaturalPortion(usdaMatch);
-        await resolveFood({ ...enriched, name: result.name }, 'usda');
-      } else {
-        await resolveFood(result, 'identify');
-      }
-    } catch(err) { setStatus('identify-status', 'Could not identify — try a clearer photo or use Search.', 'error'); }
-  };
-  reader.readAsDataURL(file);
+    setStatus('identify-status', '📊 Verifying with USDA…', '');
+    const enrichedItems = [];
+    for (const it of valid) {
+      const usdaMatch = (await searchUsdaCandidates(it.name))[0];
+      if (usdaMatch) enrichedItems.push({ ...(await enrichWithNaturalPortion(usdaMatch)), name: it.name, _source:'usda' });
+      else enrichedItems.push({ ...it, _source:'identify' });
+    }
+    setStatus('identify-status', '', '');
+    if (enrichedItems.length === 1) { await resolveFood(enrichedItems[0], enrichedItems[0]._source); return; }
+    showScanPicker('identify-scan-results', enrichedItems, 'identify', 'resolveFood');
+  } catch(err) { markPhotosDone(grid); setStatus('identify-status', 'Could not identify — try clearer photos or use Search.', 'error'); }
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────────────────
