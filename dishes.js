@@ -188,14 +188,14 @@ Read the label(s) carefully. Respond ONLY with JSON (no markdown):
 {"items":[{"name":"product name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number_or_null,"serving_other":"household measure e.g. 1 cup or null"}]}
 ${multi ? 'If all photos are the SAME product, "items" must contain exactly ONE merged object combining info from all the photos. If they are DIFFERENT products, "items" should contain one object per distinct product.' : '"items" should contain exactly one object.'}
 All values per ONE serving as labeled.` }
-    ]}], 900);
+    ]}], scanTokenBudget(photos.length));
     markPhotosDone(grid);
     setStatus('dish-label-status', '', '');
     const items = result.items || [];
     if (!items.length) { setStatus('dish-label-status', 'Could not read label(s) — try clearer photos.', 'error'); return; }
     if (items.length === 1) { setCandidateFromItem(items[0], 'label'); return; }
     showScanPicker('dish-label-scan-results', items.map(it => ({...it, _source:'label'})), 'label', 'setCandidateFromItem');
-  } catch(err) { markPhotosDone(grid); setStatus('dish-label-status', 'Could not read label(s) — try clearer photos.', 'error'); }
+  } catch(err) { console.error('dish label scan failed:', err); markPhotosDone(grid); setStatus('dish-label-status', 'Could not read label(s) — try clearer photos.', 'error'); }
 }
 
 // -- IDENTIFY --
@@ -218,7 +218,7 @@ Respond ONLY with JSON (no markdown):
 {"items":[{"name":"specific food name","calories_per_serving":number,"protein_per_serving":number,"carbs_per_serving":number,"fat_per_serving":number,"serving_grams":number,"serving_other":"e.g. 1 cup"}]}
 ${multi ? 'If all photos are the SAME item, "items" must contain exactly ONE object. If they are DIFFERENT items, include one object per distinct item.' : '"items" should contain exactly one object.'}
 For any food that isn't identifiable, use {"error":"brief reason"} in its place in the array instead.` }
-    ]}], 900);
+    ]}], scanTokenBudget(photos.length));
     markPhotosDone(grid);
     const items = result.items || [];
     const valid = items.filter(it => !it.error);
@@ -234,7 +234,7 @@ For any food that isn't identifiable, use {"error":"brief reason"} in its place 
     setStatus('dish-identify-status', '', '');
     if (enrichedItems.length === 1) { setCandidateFromItem(enrichedItems[0], enrichedItems[0]._source); return; }
     showScanPicker('dish-identify-scan-results', enrichedItems, 'identify', 'setCandidateFromItem');
-  } catch(err) { markPhotosDone(grid); setStatus('dish-identify-status', 'Could not identify — try clearer photos or use Search.', 'error'); }
+  } catch(err) { console.error('dish identify scan failed:', err); markPhotosDone(grid); setStatus('dish-identify-status', 'Could not identify — try clearer photos or use Search.', 'error'); }
 }
 
 // ── BUILDER: INGREDIENTS ──────────────────────────────────────────────────────
