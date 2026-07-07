@@ -43,7 +43,16 @@ supa.auth.onAuthStateChange((_event, session) => {
   currentUserId = session?.user?.id || null;
   if (session) {
     showApp();
-    if (!appInitialized) { appInitialized = true; init(); }
+    if (!appInitialized) {
+      appInitialized = true;
+      // If init() throws for any reason, un-flag so the NEXT auth event
+      // (e.g. a token refresh) gets a chance to retry, instead of leaving
+      // Today/Goals permanently blank until a manual page refresh.
+      Promise.resolve().then(init).catch(err => {
+        console.error('init() failed, will retry on next auth event:', err);
+        appInitialized = false;
+      });
+    }
   } else {
     showLoginScreen();
     appInitialized = false;

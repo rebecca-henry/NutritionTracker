@@ -389,12 +389,14 @@
 <div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="db.js"></script>
-<script src="auth.js"></script>
 <script src="goals.js"></script>
 <script src="today.js"></script>
 <script src="food.js"></script>
 <script src="dishes.js"></script>
 <script src="app.js"></script>
+<!-- auth.js loads last: it fires an auth callback that calls init() (defined in
+     app.js), so everything else must already be defined by the time it runs. -->
+<script src="auth.js"></script>
 
 </body>
 </html>
