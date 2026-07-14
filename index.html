@@ -45,6 +45,7 @@
     <button class="tab" id="tab-weight" onclick="showPage('weight',this)">Weight</button>
     <button class="tab" id="tab-goals" onclick="showPage('goals',this)">Goals</button>
     <button class="tab" id="tab-dishes" onclick="showPage('dishes',this)">Dishes</button>
+    <button class="tab" id="tab-fooddb" onclick="showPage('fooddb',this)">Food Database</button>
   </div>
 
   <!-- TODAY -->
@@ -270,6 +271,61 @@
   </div>
 </div>
 
+<!-- FOOD DATABASE PAGE -->
+<div class="page" id="page-fooddb">
+  <div class="search-row">
+    <input type="text" id="fooddb-search-input" placeholder="Search your foods and dishes" onkeydown="if(event.key==='Enter')searchFoodDb()">
+    <button onclick="searchFoodDb()">Search</button>
+  </div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="fooddb-filter-all-btn" onclick="setFoodDbFilter('all')">All</button>
+    <button class="mode-tab" id="fooddb-filter-foods-btn" onclick="setFoodDbFilter('foods')">Foods</button>
+    <button class="mode-tab" id="fooddb-filter-dishes-btn" onclick="setFoodDbFilter('dishes')">Dishes</button>
+  </div>
+
+  <button class="add-btn" id="fooddb-add-btn" onclick="toggleFoodDbAddForm(true)">+ Add food directly</button>
+
+  <div class="card" id="fooddb-add-form" style="display:none">
+    <div class="manual-grid">
+      <div class="manual-field full">
+        <label>Food name</label>
+        <input id="fdb-add-name" placeholder="e.g. Homemade granola">
+      </div>
+      <div class="manual-field full">
+        <label>Serving size (describe it)</label>
+        <input id="fdb-add-servingother" placeholder="e.g. 1 cup, 2 cookies">
+      </div>
+      <div class="manual-field full">
+        <label>Serving weight (grams) — optional</label>
+        <input type="number" id="fdb-add-servinggrams" placeholder="e.g. 150">
+      </div>
+      <div class="manual-field">
+        <label>Calories (kcal)</label>
+        <input type="number" id="fdb-add-cal" placeholder="0">
+      </div>
+      <div class="manual-field">
+        <label>Protein (g)</label>
+        <input type="number" id="fdb-add-protein" placeholder="0">
+      </div>
+      <div class="manual-field">
+        <label>Carbs (g)</label>
+        <input type="number" id="fdb-add-carbs" placeholder="0">
+      </div>
+      <div class="manual-field">
+        <label>Fat (g)</label>
+        <input type="number" id="fdb-add-fat" placeholder="0">
+      </div>
+    </div>
+    <div class="status-msg" id="fdb-add-status"></div>
+    <button class="confirm-btn" onclick="submitFoodDbAdd()">Save to database</button>
+    <button class="back-btn" onclick="toggleFoodDbAddForm(false)">Cancel</button>
+  </div>
+
+  <div class="section-label" id="fooddb-section-label">Recently added</div>
+  <div id="fooddb-list"></div>
+</div>
+
 <!-- ADD FOOD MODAL -->
 <div class="modal-backdrop" id="add-modal">
   <div class="modal">
@@ -400,6 +456,7 @@
 <script src="today.js"></script>
 <script src="food.js"></script>
 <script src="dishes.js"></script>
+<script src="fooddb.js"></script>
 <script src="app.js"></script>
 <!-- auth.js loads last: it fires an auth callback that calls init() (defined in
      app.js), so everything else must already be defined by the time it runs. -->
