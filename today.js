@@ -125,22 +125,6 @@ function renderToday() {
   if (goals.fat)     document.getElementById('bar-fat').style.width     = Math.min(tf/goals.fat*100,100)+'%';
   document.getElementById('cal-goal-lbl').textContent = gc || '—';
   document.getElementById('cal-remain').textContent = gc ? Math.max(gc-tc,0) : '—';
-  renderStreak();
-}
-
-async function renderStreak() {
-  try {
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-60);
-    const logs = await SB.query('Food_Logs', '?date=gte.'+cutoff.toISOString()+'&select=date');
-    const days = new Set(logs.map(l => todayStr(new Date(l.date))));
-    let streak = 0;
-    for (let i = 0; i < 60; i++) {
-      const d = new Date(); d.setDate(d.getDate()-i);
-      if (days.has(todayStr(d))) streak++;
-      else if (i > 0) break;
-    }
-    document.getElementById('streak-val').textContent = streak;
-  } catch(e) { document.getElementById('streak-val').textContent = '—'; }
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
