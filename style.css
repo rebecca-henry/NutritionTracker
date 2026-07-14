@@ -8,8 +8,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .date-nav button{background:none;border:none;cursor:pointer;color:#666;font-size:18px;padding:2px 8px;border-radius:8px}
 .date-nav button:hover{background:#f0f0f0}
 .date-label{font-size:13px;color:#666;font-weight:500;min-width:80px;text-align:center}
-.tab-bar{display:flex;gap:4px;padding:.75rem 1rem;background:#fff;border-bottom:1px solid #e5e5e5;position:sticky;top:73px;z-index:9}
-.tab{font-size:13px;padding:5px 14px;border-radius:20px;border:1px solid transparent;cursor:pointer;background:none;color:#666;font-family:inherit}
+.tab-bar{display:flex;gap:4px;padding:.75rem 1rem;background:#fff;border-bottom:1px solid #e5e5e5;position:sticky;top:73px;z-index:9;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab{font-size:13px;padding:5px 14px;border-radius:20px;border:1px solid transparent;cursor:pointer;background:none;color:#666;font-family:inherit;white-space:nowrap;flex-shrink:0}
 .tab.active{background:#f0f0f0;border-color:#ddd;color:#1a1a1a;font-weight:500}
 .page{display:none;padding:1rem}
 .page.active{display:block}
